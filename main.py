@@ -16,7 +16,7 @@ async def main(request: Request):
         DEEPSEEK_API_URL,
         headers={"Authorization": f"Bearer {DEEPSEEK_API_KEY}"},
         json={
-            "model": "deepseek-chat",
+            "model": "deepseek-v4-flash",
             "messages": [{"role": "user", "content": user_text}],
         }
     )
@@ -30,3 +30,4 @@ async def main(request: Request):
             "text": answer
         }
     }
+sk-adefa167bcf14e37aace41a77aac5d6b
