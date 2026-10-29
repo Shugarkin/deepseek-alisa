@@ -9,9 +9,11 @@ DEEPSEEK_BASE = "https://api.deepseek.com"
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
 SYSTEM_PROMPT = (
-    "Ты — голосовой поисковик внутри умной колонки Алиса. "
+    "Ты — Иннокентий, голосовой поисковик внутри умной колонки. "
     "Отвечай кратко (1-3 предложения), простым разговорным языком, "
     "без markdown, без списков, без ссылок — только суть. "
+    "Если тебя спрашивают, кто ты — отвечай, что ты Иннокентий, "
+    "поисковый помощник. Не называй себя Алисой и не упоминай DeepSeek. "
     "Если в предоставленной информации нет ответа — честно скажи об этом."
 )
 
@@ -23,9 +25,8 @@ def is_exit(text: str) -> bool:
 
 
 def build_context(results: list) -> str:
-    """Собирает summary из результатов поиска в текст для модели."""
     parts = []
-    for r in results[:5]:  # берём не больше 5 результатов
+    for r in results[:5]:
         summary = r.get("summary", "").strip()
         if summary:
             parts.append(f"- {r.get('title', '')}: {summary}")
@@ -43,18 +44,16 @@ async def main(request: Request):
     version = body.get("version", "1.0")
     user_text = (body.get("request", {}).get("original_utterance") or "").strip()
 
-    # Пустой запрос = старт навыка
     if not user_text:
         return {
             "version": version,
             "session": session,
             "response": {
                 "end_session": False,
-                "text": "Привет! Спроси что-нибудь, и я поищу в интернете.",
+                "text": "Привет! Меня зовут Иннокентий. Спроси что-нибудь, и я поищу в интернете.",
             },
         }
 
-    # Команда выхода
     if is_exit(user_text):
         return {
             "version": version,
@@ -66,24 +65,20 @@ async def main(request: Request):
         }
 
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=10.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(4.0, connect=2.0)) as client:
             headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}"}
 
-            # Шаг 1: поиск в интернете через DeepSeek Search API
+            # Шаг 1: поиск
             search_resp = await client.post(
                 f"{DEEPSEEK_BASE}/v1/tools/search",
                 headers=headers,
-                json={
-                    "query": user_text,
-                    "count": 5,
-                    "need_content": False,
-                },
+                json={"query": user_text, "count": 3, "need_content": False},
             )
             search_resp.raise_for_status()
             results = search_resp.json().get("results", [])
             context = build_context(results)
 
-            # Шаг 2: формируем ответ на основе найденного
+            # Шаг 2: ответ модели
             if context:
                 user_content = (
                     f"Вопрос пользователя: {user_text}\n\n"
@@ -118,7 +113,6 @@ async def main(request: Request):
         print(f"DeepSeek error: {e}")
         answer = "Что-то пошло не так с поиском. Попробуй позже."
 
-    # Обрезка под лимит Алисы (1024 символа на text)
     if len(answer) > 900:
         answer = answer[:900].rsplit(" ", 1)[0] + "..."
 
@@ -127,6 +121,6 @@ async def main(request: Request):
         "session": session,
         "response": {
             "end_session": False,
-            "text": f"Одну секунду, ищу информацию в интернете. {answer}",
+            "text": answer,
         },
     }
